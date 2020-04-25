@@ -66,6 +66,7 @@ func main() {
 	signal.Notify(sigChannel, syscall.SIGINT)
 
 	go webServer()
+	go msgBuffer.Committer()
 
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"runtime/debug"
@@ -19,6 +20,8 @@ const (
 // Goroutine which serves HTTP & WS for the main client-facing API
 func webServer() {
 	http.HandleFunc("/", wwwRoot)
+	http.HandleFunc("/gelf", wwwGelf)
+
 	log.Println("Web server listening on", wwwBind)
 
 	corsHandler := cors.New(cors.Options{
@@ -75,4 +78,27 @@ func wwwJSON(w http.ResponseWriter, r *http.Request, msg interface{}) {
 // Handles index.html
 func wwwRoot(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("<html><body>Equinox API. Nothing here.</body></html>"))
+}
+
+func wwwGelf(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		wwwError(w, r, "HTTP POST method expected")
+		return
+	}
+	defer r.Body.Close()
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		wwwErrorWithCode(w, r, "Cannot read data", http.StatusBadRequest)
+		return
+	}
+	msg, err := ParseGelfMessage(data)
+	if err != nil {
+		wwwErrorWithCode(w, r, fmt.Sprintf("Error parsing GELF message: %v", err), http.StatusBadRequest)
+		return
+	}
+	err = msgBuffer.AddMessage(msg)
+	if err != nil {
+		wwwError(w, r, fmt.Sprintf("Error ingesting message: %v", err))
+		return
+	}
 }

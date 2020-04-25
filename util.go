@@ -12,10 +12,52 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
+
+// WithMutex extends the Mutex type with the convenient .With(func) function
+type WithMutex struct {
+	sync.Mutex
+}
+
+// WithLock executes the given function with the mutex locked
+func (m *WithMutex) WithLock(f func()) {
+	m.Mutex.Lock()
+	f()
+	m.Mutex.Unlock()
+}
+
+// WithRWMutex extends the RWMutex type with convenient .With(func) functions
+type WithRWMutex struct {
+	sync.RWMutex
+}
+
+// WithRLock executes the given function with the mutex rlocked
+func (m *WithRWMutex) WithRLock(f func()) {
+	m.RWMutex.RLock()
+	f()
+	m.RWMutex.RUnlock()
+}
+
+// WithWLock executes the given function with the mutex wlocked
+func (m *WithRWMutex) WithWLock(f func()) {
+	m.RWMutex.Lock()
+	f()
+	m.RWMutex.Unlock()
+}
+
+// Converts the given Unix timestamp to time.Time
+func unixTimeStampToUTCTime(ts uint32) time.Time {
+	return time.Unix(int64(ts), 0)
+}
+
+// Gets the current Unix timestamp in UTC
+func getNowUTC() int64 {
+	return time.Now().UTC().Unix()
+}
 
 func jsonifyWhatever(i interface{}) string {
 	jsonb, err := json.Marshal(i)
@@ -105,6 +147,34 @@ func InInt64Array(x int64, a []int64) bool {
 		}
 	}
 	return false
+}
+
+// InStringArray checks to see if a string is in a []string
+func InStringArray(s string, a []string) bool {
+	for _, s2 := range a {
+		if s2 == s {
+			return true
+		}
+	}
+	return false
+}
+
+// InStringArraySorted checks to see if a string is in a sorted []string
+func InStringArraySorted(s string, a []string) bool {
+	idx := sort.Search(len(a), func(i int) bool {
+		return a[i] >= s
+	})
+	return idx < len(a) && a[idx] == s
+}
+
+func InsertSortedString(s string, a []string) (a2 []string) {
+	idx := sort.Search(len(a), func(i int) bool {
+		return a[i] >= s
+	})
+	a2 = append(a, "")
+	copy(a2[idx+1:], a2[idx:])
+	a2[idx] = s
+	return
 }
 
 // BToMB divides the given number by (1024*1024)
