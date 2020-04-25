@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -62,14 +63,15 @@ func (sc *DbShardCollection) GetShard(ts uint32) (shard DbShard, err error) {
 			full_message 	TEXT,
 			short_message	TEXT
 		);
-		CREATE INDEX ON data(timestamp);
-		CREATE INDEX ON data(host);
+		CREATE INDEX idx_data_timestamp ON data(timestamp);
+		CREATE INDEX idx_data_host ON data(host);
 		`)
 		if err != nil {
 			return
 		}
 		shard.dataFields = []string{"full_message", "host", "short_message", "timestamp"}
 		shard.indexedFields = []string{"host", "timestamp"}
+		log.Println("Created new shard database", shardDbName)
 	} else {
 		// Load dataFields and indexedFields from database
 		shard.dataFields = []string{}
@@ -84,12 +86,15 @@ func (sc *DbShardCollection) GetShard(ts uint32) (shard DbShard, err error) {
 				name     string
 				type_    string
 				notnull  int
-				default_ string
+				default_ sql.NullString
 				ispk     int
 			}
 			err = rows.Scan(&col.idx, &col.name, &col.type_, &col.notnull, &col.default_, &col.ispk)
 			if err != nil {
 				return
+			}
+			if col.name == "id" {
+				continue
 			}
 			shard.dataFields = InsertSortedString(col.name, shard.dataFields)
 		}
@@ -101,11 +106,13 @@ func (sc *DbShardCollection) GetShard(ts uint32) (shard DbShard, err error) {
 		indexList := []string{}
 		for rows.Next() {
 			var idx struct {
-				seq    int
-				name   string
-				unique int
+				seq     int
+				name    string
+				unique  int
+				how     string
+				partial int
 			}
-			err = rows.Scan(&idx.seq, &idx.name, &idx.unique)
+			err = rows.Scan(&idx.seq, &idx.name, &idx.unique, &idx.how, &idx.partial)
 			if err != nil {
 				return
 			}
@@ -183,16 +190,24 @@ func CommitMessageToShards(msg BasicGelfMessage) (err error) {
 			if v, found := msg.AdditionalNumbers[fn]; found {
 				values[i] = strconv.FormatFloat(v, 'f', -1, 64)
 			} else {
-				values[i] = quoteSQLString(msg.AdditionalStrings[fn])
+				s := msg.AdditionalStrings[fn]
+				if len(s) > 0 {
+					values[i] = quoteSQLString(s)
+				} else {
+					values[i] = "NULL"
+				}
 			}
 		}
 	}
 	sqlString := fmt.Sprintf("INSERT INTO data(%s) VALUES(%s)", strings.Join(fields, ","), strings.Join(values, ","))
 	_, err = shard.db.Exec(sqlString)
+	if err != nil {
+		log.Println(sqlString)
+	}
 
 	return
 }
 
 func quoteSQLString(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "''") + "''"
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }

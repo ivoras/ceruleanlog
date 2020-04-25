@@ -3,7 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 )
+
+var reIdentifier = regexp.MustCompile("^[a-zA-Z][a-zA-Z0-9_-]*$")
 
 type BasicGelfMessage struct {
 	Version           string             `json:"version"`
@@ -66,6 +69,10 @@ func ParseGelfMessage(data []byte) (msg BasicGelfMessage, err error) {
 			}
 			if k[0] == '_' {
 				k = k[1:]
+			}
+			if !reIdentifier.MatchString(k) {
+				err = fmt.Errorf("Invalid GELF message key: '%s'", k)
+				return
 			}
 			switch v2 := v.(type) {
 			case float64:

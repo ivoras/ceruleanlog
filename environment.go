@@ -22,8 +22,8 @@ func initEnvironment() {
 		if err != nil {
 			log.Panicln(err)
 		}
-	}
-	if !st.IsDir() {
+		log.Println("Initialised data directory", *dataDir)
+	} else if !st.IsDir() {
 		log.Panicln("Not a directory:", *dataDir)
 	}
 

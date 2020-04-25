@@ -101,4 +101,5 @@ func wwwGelf(w http.ResponseWriter, r *http.Request) {
 		wwwError(w, r, fmt.Sprintf("Error ingesting message: %v", err))
 		return
 	}
+	wwwJSON(w, r, WwwRespDefault{Ok: true, Message: "Saved."})
 }

@@ -45,7 +45,7 @@ func (b *MsgBuffer) Committer() {
 			})
 			err := b.CommitMessagesToShards(oldMessages)
 			if err != nil {
-				log.Printf("Cannot commit messages to database shards! %d messages lost!", len(oldMessages))
+				log.Printf("Cannot commit messages to database shards! %d messages lost! %v", len(oldMessages), err)
 			}
 		}
 	}
