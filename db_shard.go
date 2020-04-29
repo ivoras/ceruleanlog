@@ -13,6 +13,7 @@ import (
 
 type DbShard struct {
 	db            *sql.DB
+	name          string
 	dataFields    []string // Must be kept sorted for binary search
 	indexedFields []string // Must be kept sorted for binary search
 }
@@ -20,10 +21,10 @@ type DbShard struct {
 type DbShardCollection struct {
 	WithRWMutex
 
-	shards map[string]DbShard
+	shards map[string]*DbShard
 }
 
-var shardCollection = DbShardCollection{shards: map[string]DbShard{}}
+var shardCollection = DbShardCollection{shards: map[string]*DbShard{}}
 
 // GetShardDirName returns the directory name for a shard which contains data
 // for the given timestamp.
@@ -31,25 +32,35 @@ func (sc *DbShardCollection) GetShardDirName(ts uint32) (dirName string) {
 	return fmt.Sprintf("%s/%s", getShardsDir(), globalConfig.GetShardName(ts))
 }
 
-func (sc *DbShardCollection) GetShard(ts uint32) (shard DbShard, err error) {
-	shardDir := sc.GetShardDirName(ts)
+func (sc *DbShardCollection) GetShard(ts uint32) (shard *DbShard, err error) {
+	shardName := globalConfig.GetShardName(ts)
+	var found bool
+	shardCollection.WithRLock(func() {
+		shard, found = shardCollection.shards[shardName]
+	})
+	if found {
+		return
+	}
+
+	shardDir := fmt.Sprintf("%s/%s", getShardsDir(), shardName)
 	if _, err = os.Stat(shardDir); err != nil {
 		err = os.MkdirAll(shardDir, 0755)
 		if err != nil {
 			return
 		}
 	}
-	shardDbName := fmt.Sprintf("%s/shard.db", shardDir)
+	shardDbFileName := fmt.Sprintf("%s/shard.db", shardDir)
 	shardDbExists := false
-	if _, err := os.Stat(shardDbName); err == nil {
+	if _, err := os.Stat(shardDbFileName); err == nil {
 		shardDbExists = true
 	}
 	err = nil
 
-	db, err := sql.Open("sqlite3", shardDbName)
+	db, err := sql.Open("sqlite3", shardDbFileName)
 	if err != nil {
 		return
 	}
+	shard = &DbShard{}
 	if !shardDbExists {
 		_, err = db.Exec(fmt.Sprintf("PRAGMA journal_mode=%s", globalConfig.SQLiteJournalMode))
 		if err != nil {
@@ -71,7 +82,7 @@ func (sc *DbShardCollection) GetShard(ts uint32) (shard DbShard, err error) {
 		}
 		shard.dataFields = []string{"full_message", "host", "short_message", "timestamp"}
 		shard.indexedFields = []string{"host", "timestamp"}
-		log.Println("Created new shard database", shardDbName)
+		log.Println("Created new shard database", shardDbFileName)
 	} else {
 		// Load dataFields and indexedFields from database
 		shard.dataFields = []string{}
@@ -138,13 +149,49 @@ func (sc *DbShardCollection) GetShard(ts uint32) (shard DbShard, err error) {
 		}
 	}
 	shard.db = db
+	shard.name = shardName
+	shardCollection.WithWLock(func() {
+		shardCollection.shards[shardName] = shard
+	})
 	return
 }
 
-func CommitMessageToShards(msg BasicGelfMessage) (err error) {
-	if msg.Timestamp == 0 {
-		msg.Timestamp = uint32(getNowUTC())
+func CommitMessagesToShards(messages *[]BasicGelfMessage) (err error) {
+	oldShardName := ""
+	var tx *sql.Tx
+
+	for _, msg := range *messages {
+		shard, err := shardCollection.GetShard(msg.Timestamp)
+		if err != nil {
+			return err
+		}
+		if tx == nil {
+			oldShardName = shard.name
+			tx, err = shard.db.Begin()
+			if err != nil {
+				return err
+			}
+		} else if oldShardName != shard.name {
+			err = tx.Commit()
+			if err != nil {
+				return err
+			}
+			tx, err = shard.db.Begin()
+			if err != nil {
+				return err
+			}
+			oldShardName = shard.name
+		}
+
+		CommitMessageToShard(tx, &msg)
 	}
+	if tx != nil {
+		err = tx.Commit()
+	}
+	return
+}
+
+func CommitMessageToShard(tx *sql.Tx, msg *BasicGelfMessage) (err error) {
 	shard, err := shardCollection.GetShard(msg.Timestamp)
 	if err != nil {
 		return
@@ -169,7 +216,7 @@ func CommitMessageToShards(msg BasicGelfMessage) (err error) {
 	}
 	for fn, fnType := range newFields {
 		fields = InsertSortedString(fn, fields)
-		_, err = shard.db.Exec(fmt.Sprintf("ALTER TABLE data ADD COLUMN %s %s", fn, fnType))
+		_, err = tx.Exec(fmt.Sprintf("ALTER TABLE data ADD COLUMN %s %s", fn, fnType))
 		if err != nil {
 			return
 		}
@@ -190,6 +237,7 @@ func CommitMessageToShards(msg BasicGelfMessage) (err error) {
 			if v, found := msg.AdditionalNumbers[fn]; found {
 				values[i] = strconv.FormatFloat(v, 'f', -1, 64)
 			} else {
+				// This accidentally works for fields which are not present in this message
 				s := msg.AdditionalStrings[fn]
 				if len(s) > 0 {
 					values[i] = quoteSQLString(s)
@@ -200,7 +248,7 @@ func CommitMessageToShards(msg BasicGelfMessage) (err error) {
 		}
 	}
 	sqlString := fmt.Sprintf("INSERT INTO data(%s) VALUES(%s)", strings.Join(fields, ","), strings.Join(values, ","))
-	_, err = shard.db.Exec(sqlString)
+	_, err = tx.Exec(sqlString)
 	if err != nil {
 		log.Println(sqlString)
 	}

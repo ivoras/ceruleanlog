@@ -23,7 +23,7 @@ func (b *MsgBuffer) AddMessage(msg BasicGelfMessage) (err error) {
 		b.Messages = append(b.Messages, msg)
 		if globalConfig.MemoryBufferTimeSeconds == 0 {
 			oldMessages := b.Messages
-			err = b.CommitMessagesToShards(oldMessages)
+			err = b.CommitMessagesToShards(&oldMessages)
 			if err == nil {
 				b.Messages = []BasicGelfMessage{}
 			} else {
@@ -43,7 +43,7 @@ func (b *MsgBuffer) Committer() {
 				b.Messages = []BasicGelfMessage{}
 				b.LastSwapTime = time.Now()
 			})
-			err := b.CommitMessagesToShards(oldMessages)
+			err := b.CommitMessagesToShards(&oldMessages)
 			if err != nil {
 				log.Printf("Cannot commit messages to database shards! %d messages lost! %v", len(oldMessages), err)
 			}
@@ -51,12 +51,13 @@ func (b *MsgBuffer) Committer() {
 	}
 }
 
-func (b *MsgBuffer) CommitMessagesToShards(messages []BasicGelfMessage) (err error) {
-	for _, msg := range messages {
-		err = CommitMessageToShards(msg)
-		if err != nil {
-			return
+func (b *MsgBuffer) CommitMessagesToShards(messages *[]BasicGelfMessage) (err error) {
+	now := uint32(getNowUTC())
+	for i := range *messages {
+		if (*messages)[i].Timestamp == 0 {
+			(*messages)[i].Timestamp = now
 		}
 	}
+	err = CommitMessagesToShards(messages)
 	return
 }
