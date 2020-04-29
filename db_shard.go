@@ -13,6 +13,7 @@ import (
 
 type DbShard struct {
 	db            *sql.DB
+	id            uint32
 	name          string
 	dataFields    []string // Must be kept sorted for binary search
 	indexedFields []string // Must be kept sorted for binary search
@@ -21,22 +22,16 @@ type DbShard struct {
 type DbShardCollection struct {
 	WithRWMutex
 
-	shards map[string]*DbShard
+	shards map[uint32]*DbShard
 }
 
-var shardCollection = DbShardCollection{shards: map[string]*DbShard{}}
-
-// GetShardDirName returns the directory name for a shard which contains data
-// for the given timestamp.
-func (sc *DbShardCollection) GetShardDirName(ts uint32) (dirName string) {
-	return fmt.Sprintf("%s/%s", getShardsDir(), globalConfig.GetShardName(ts))
-}
+var shardCollection = DbShardCollection{shards: map[uint32]*DbShard{}}
 
 func (sc *DbShardCollection) GetShard(ts uint32) (shard *DbShard, err error) {
-	shardName := globalConfig.GetShardName(ts)
+	shardName, shardID := globalConfig.GetShardNameID(ts)
 	var found bool
 	shardCollection.WithRLock(func() {
-		shard, found = shardCollection.shards[shardName]
+		shard, found = shardCollection.shards[shardID]
 	})
 	if found {
 		return
@@ -150,14 +145,15 @@ func (sc *DbShardCollection) GetShard(ts uint32) (shard *DbShard, err error) {
 	}
 	shard.db = db
 	shard.name = shardName
+	shard.id = shardID
 	shardCollection.WithWLock(func() {
-		shardCollection.shards[shardName] = shard
+		shardCollection.shards[shardID] = shard
 	})
 	return
 }
 
 func CommitMessagesToShards(messages *[]BasicGelfMessage) (err error) {
-	oldShardName := ""
+	oldShardID := uint32(0)
 	var tx *sql.Tx
 
 	for _, msg := range *messages {
@@ -166,12 +162,12 @@ func CommitMessagesToShards(messages *[]BasicGelfMessage) (err error) {
 			return err
 		}
 		if tx == nil {
-			oldShardName = shard.name
+			oldShardID = shard.id
 			tx, err = shard.db.Begin()
 			if err != nil {
 				return err
 			}
-		} else if oldShardName != shard.name {
+		} else if oldShardID != shard.id {
 			err = tx.Commit()
 			if err != nil {
 				return err
@@ -180,7 +176,7 @@ func CommitMessagesToShards(messages *[]BasicGelfMessage) (err error) {
 			if err != nil {
 				return err
 			}
-			oldShardName = shard.name
+			oldShardID = shard.id
 		}
 
 		CommitMessageToShard(tx, &msg)

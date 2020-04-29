@@ -75,20 +75,21 @@ func getConfigFileName() string {
 	return fmt.Sprintf("%s/%s", *dataDir, *configFile)
 }
 
-// GetShardName returns a name for a shard (the name is unique and date-based)
-// which contains data for the given timestamp.
-func (c CeruleanConfig) GetShardName(ts uint32) (name string) {
+// GetShardName returns a name and a unique ID
+// (the name and the ID are locally unique and date-based)
+// for a shard which contains data for the given timestamp.
+func (c CeruleanConfig) GetShardNameID(ts uint32) (name string, id uint32) {
 	t := unixTimeStampToUTCTime(ts)
 	switch c.ShardTimeSpec {
 	case ShardTimeSpecYear:
-		return t.Format("2006")
+		return t.Format("2006"), uint32(t.Year())
 	case ShardTimeSpecMonth:
-		return t.Format("2006-01")
+		return t.Format("2006-01"), uint32(t.Year())*100 + uint32(t.Month())
 	case ShardTimeSpecWeek:
 		y, w := t.ISOWeek()
-		return fmt.Sprintf("%04d-%02d", y, w)
+		return fmt.Sprintf("%04d-%02d", y, w), uint32(y)*100 + uint32(w)
 	case ShardTimeSpecDay:
-		return t.Format("2006-01-02")
+		return t.Format("2006-01-02"), ts / (3600 * 24)
 	default:
 		log.Panicln("Invalid ShardTimeSpec:", c.ShardTimeSpec)
 	}
