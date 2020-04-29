@@ -11,11 +11,11 @@ Why? I find Graylog to be cool but extremely slow for the limited functionalitie
 
 ### MVP goals
 
-* Ingests GELF JSON documents
-* Stores data in SQLite3 databases auto-sharded by time
-* Has configurable SQLite3 journal_mode
-* Has configurable shard time
-* Has configurable memory buffer time (or 0 for sync mode) 
+* ✓ Ingests GELF JSON documents
+* ✓ Stores data in SQLite3 databases auto-sharded by time
+* ✓ Has configurable SQLite3 journal_mode
+* ✓ Has configurable shard time
+* ✓ Has configurable memory buffer time (or 0 for sync mode) 
 * Has configurable indexing
 * Implements a query API
 * Supports simple queries via SQL syntax

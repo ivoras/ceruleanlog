@@ -21,6 +21,7 @@ const (
 func webServer() {
 	http.HandleFunc("/", wwwRoot)
 	http.HandleFunc("/gelf", wwwGelf)
+	http.HandleFunc("/query", wwwQuery)
 
 	log.Println("Web server listening on", wwwBind)
 
@@ -80,6 +81,7 @@ func wwwRoot(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("<html><body>Equinox API. Nothing here.</body></html>"))
 }
 
+// Handles the /gelf API
 func wwwGelf(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		wwwError(w, r, "HTTP POST method expected")
@@ -102,4 +104,12 @@ func wwwGelf(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	wwwJSON(w, r, WwwRespDefault{Ok: true, Message: "Saved."})
+}
+
+// Handles the /query API
+func wwwQuery(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		wwwError(w, r, "HTTP GET method expected")
+		return
+	}
 }

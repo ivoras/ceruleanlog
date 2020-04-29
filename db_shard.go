@@ -153,8 +153,8 @@ func (sc *DbShardCollection) GetShard(ts uint32) (shard *DbShard, err error) {
 }
 
 func CommitMessagesToShards(messages *[]BasicGelfMessage) (err error) {
-	oldShardID := uint32(0)
 	var tx *sql.Tx
+	oldShardID := uint32(0)
 
 	for _, msg := range *messages {
 		shard, err := shardCollection.GetShard(msg.Timestamp)
