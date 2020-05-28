@@ -1,6 +1,7 @@
 package logcore
 
 import (
+	"fmt"
 	"log"
 	"time"
 )
@@ -35,7 +36,7 @@ func (b *MsgBuffer) addMessage(msg BasicGelfMessage) (err error) {
 }
 
 func (b *MsgBuffer) committer() {
-	log.Println("Starting CeruleanLog committer for", b.instance.dataDir, "flush time", b.instance.config.MemoryBufferTimeSeconds)
+	log.Println(fmt.Sprintf("Starting CeruleanLog committer for %s, flush time %ds.", b.instance.dataDir, b.instance.config.MemoryBufferTimeSeconds))
 	for {
 		if time.Since(b.LastSwapTime) >= time.Duration(b.instance.config.MemoryBufferTimeSeconds)*time.Second && len(b.Messages) != 0 {
 			var oldMessages []BasicGelfMessage
