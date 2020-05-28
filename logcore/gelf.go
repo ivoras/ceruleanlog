@@ -11,6 +11,7 @@ var reIdentifier = regexp.MustCompile("^[a-zA-Z][a-zA-Z0-9_-]*$")
 type BasicGelfMessage struct {
 	Version           string             `json:"version"`
 	Host              string             `json:"host"`
+	Facility          string             `json:"facility"`
 	ShortMessage      string             `json:"short_message"`
 	FullMessage       string             `json:"full_message"`
 	Timestamp         uint32             `json:"timestamp"`
@@ -33,6 +34,12 @@ func ParseGelfMessage(data []byte) (msg BasicGelfMessage, err error) {
 		switch k {
 		case "version":
 			msg.Version, ok = v.(string)
+			if !ok {
+				err = fmt.Errorf("String expected at %s", k)
+				return
+			}
+		case "facility":
+			msg.Facility, ok = v.(string)
 			if !ok {
 				err = fmt.Errorf("String expected at %s", k)
 				return

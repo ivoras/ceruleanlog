@@ -228,6 +228,8 @@ func (sc *DbShardCollection) CommitMessageToShard(tx *sql.Tx, msg *BasicGelfMess
 			values[i] = quoteSQLString(msg.ShortMessage)
 		case "timestamp":
 			values[i] = strconv.Itoa(int(msg.Timestamp))
+		case "facility":
+			values[i] = msg.Facility
 		default:
 			if v, found := msg.AdditionalNumbers[fn]; found {
 				values[i] = strconv.FormatFloat(v, 'f', -1, 64)
