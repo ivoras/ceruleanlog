@@ -53,9 +53,10 @@ func NewCeruleanInstance(dataDir string) *CeruleanInstance {
 		log.Panicln("Not a directory:", dataDir)
 	}
 
-	instance.config, err = ReadCeruleanConfig(instance.getConfigFileName())
-	if err != nil {
-		log.Panicln("Cannot load config file", err)
+	if readConfig, err := ReadCeruleanConfig(instance.getConfigFileName()); err == nil {
+		instance.config = readConfig
+	} else {
+		err = WriteCeruleanConfig(instance.getConfigFileName(), instance.config)
 	}
 
 	return &instance
