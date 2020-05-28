@@ -11,6 +11,8 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+
+	"github.com/ivoras/ceruleanlog/logcore"
 )
 
 const (
@@ -26,10 +28,10 @@ var sysEventChannel = make(chan sysEventMessage, 5)
 
 var logFileName = flag.String("log", "/tmp/ceruleanlog.log", "Log file ('-' for only stderr)")
 var dataDir = flag.String("data", "./cerulean_data", "Data directory")
-var configFile = flag.String("conf", "ceruleanlog.json", "JSON config file")
 var logOutput io.Writer
 var startTime time.Time
-var globalConfig CeruleanConfig
+
+var instance *logcore.CeruleanInstance
 
 func main() {
 	os.Setenv("TZ", "UTC")
@@ -50,7 +52,7 @@ func main() {
 
 	flag.Parse()
 
-	initEnvironment()
+	instance = logcore.NewCeruleanInstance(*dataDir)
 
 	InitRandom()
 
@@ -66,7 +68,7 @@ func main() {
 	signal.Notify(sigChannel, syscall.SIGINT)
 
 	go webServer()
-	go msgBuffer.Committer()
+	go instance.Committer()
 
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)

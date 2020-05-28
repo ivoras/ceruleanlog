@@ -1,4 +1,4 @@
-package main
+package logcore
 
 import (
 	"database/sql"
@@ -22,22 +22,21 @@ type DbShard struct {
 type DbShardCollection struct {
 	WithRWMutex
 
-	shards map[uint32]*DbShard
+	shards   map[uint32]*DbShard
+	instance *CeruleanInstance
 }
 
-var shardCollection = DbShardCollection{shards: map[uint32]*DbShard{}}
-
 func (sc *DbShardCollection) GetShard(ts uint32) (shard *DbShard, err error) {
-	shardName, shardID := globalConfig.GetShardNameID(ts)
+	shardName, shardID := sc.instance.config.GetShardNameID(ts)
 	var found bool
-	shardCollection.WithRLock(func() {
-		shard, found = shardCollection.shards[shardID]
+	sc.WithRLock(func() {
+		shard, found = sc.shards[shardID]
 	})
 	if found {
 		return
 	}
 
-	shardDir := fmt.Sprintf("%s/%s", getShardsDir(), shardName)
+	shardDir := fmt.Sprintf("%s/%s", sc.instance.getShardsDir(), shardName)
 	if _, err = os.Stat(shardDir); err != nil {
 		err = os.MkdirAll(shardDir, 0755)
 		if err != nil {
@@ -57,7 +56,7 @@ func (sc *DbShardCollection) GetShard(ts uint32) (shard *DbShard, err error) {
 	}
 	shard = &DbShard{}
 	if !shardDbExists {
-		_, err = db.Exec(fmt.Sprintf("PRAGMA journal_mode=%s", globalConfig.SQLiteJournalMode))
+		_, err = db.Exec(fmt.Sprintf("PRAGMA journal_mode=%s", sc.instance.config.SQLiteJournalMode))
 		if err != nil {
 			return
 		}
@@ -146,18 +145,18 @@ func (sc *DbShardCollection) GetShard(ts uint32) (shard *DbShard, err error) {
 	shard.db = db
 	shard.name = shardName
 	shard.id = shardID
-	shardCollection.WithWLock(func() {
-		shardCollection.shards[shardID] = shard
+	sc.WithWLock(func() {
+		sc.shards[shardID] = shard
 	})
 	return
 }
 
-func CommitMessagesToShards(messages *[]BasicGelfMessage) (err error) {
+func (sc *DbShardCollection) CommitMessagesToShards(messages *[]BasicGelfMessage) (err error) {
 	var tx *sql.Tx
 	oldShardID := uint32(0)
 
 	for _, msg := range *messages {
-		shard, err := shardCollection.GetShard(msg.Timestamp)
+		shard, err := sc.GetShard(msg.Timestamp)
 		if err != nil {
 			return err
 		}
@@ -179,7 +178,7 @@ func CommitMessagesToShards(messages *[]BasicGelfMessage) (err error) {
 			oldShardID = shard.id
 		}
 
-		CommitMessageToShard(tx, &msg)
+		sc.CommitMessageToShard(tx, &msg)
 	}
 	if tx != nil {
 		err = tx.Commit()
@@ -187,8 +186,8 @@ func CommitMessagesToShards(messages *[]BasicGelfMessage) (err error) {
 	return
 }
 
-func CommitMessageToShard(tx *sql.Tx, msg *BasicGelfMessage) (err error) {
-	shard, err := shardCollection.GetShard(msg.Timestamp)
+func (sc *DbShardCollection) CommitMessageToShard(tx *sql.Tx, msg *BasicGelfMessage) (err error) {
+	shard, err := sc.GetShard(msg.Timestamp)
 	if err != nil {
 		return
 	}

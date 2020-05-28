@@ -1,4 +1,4 @@
-package main
+package logcore
 
 import (
 	"log"
@@ -14,16 +14,15 @@ type MsgBuffer struct {
 	WithMutex
 	Messages     []BasicGelfMessage
 	LastSwapTime time.Time
+	instance     *CeruleanInstance
 }
 
-var msgBuffer = MsgBuffer{Messages: []BasicGelfMessage{}}
-
-func (b *MsgBuffer) AddMessage(msg BasicGelfMessage) (err error) {
+func (b *MsgBuffer) addMessage(msg BasicGelfMessage) (err error) {
 	b.WithLock(func() {
 		b.Messages = append(b.Messages, msg)
-		if globalConfig.MemoryBufferTimeSeconds == 0 {
+		if b.instance.config.MemoryBufferTimeSeconds == 0 {
 			oldMessages := b.Messages
-			err = b.CommitMessagesToShards(&oldMessages)
+			err = b.commitMessagesToShards(&oldMessages)
 			if err == nil {
 				b.Messages = []BasicGelfMessage{}
 			} else {
@@ -34,16 +33,16 @@ func (b *MsgBuffer) AddMessage(msg BasicGelfMessage) (err error) {
 	return
 }
 
-func (b *MsgBuffer) Committer() {
+func (b *MsgBuffer) committer() {
 	for {
-		if time.Since(b.LastSwapTime) >= time.Duration(globalConfig.MemoryBufferTimeSeconds)*time.Second {
+		if time.Since(b.LastSwapTime) >= time.Duration(b.instance.config.MemoryBufferTimeSeconds)*time.Second {
 			var oldMessages []BasicGelfMessage
 			b.WithLock(func() {
 				oldMessages = b.Messages
 				b.Messages = []BasicGelfMessage{}
 				b.LastSwapTime = time.Now()
 			})
-			err := b.CommitMessagesToShards(&oldMessages)
+			err := b.commitMessagesToShards(&oldMessages)
 			if err != nil {
 				log.Printf("Cannot commit messages to database shards! %d messages lost! %v", len(oldMessages), err)
 			}
@@ -51,13 +50,13 @@ func (b *MsgBuffer) Committer() {
 	}
 }
 
-func (b *MsgBuffer) CommitMessagesToShards(messages *[]BasicGelfMessage) (err error) {
+func (b *MsgBuffer) commitMessagesToShards(messages *[]BasicGelfMessage) (err error) {
 	now := uint32(getNowUTC())
 	for i := range *messages {
 		if (*messages)[i].Timestamp == 0 {
 			(*messages)[i].Timestamp = now
 		}
 	}
-	err = CommitMessagesToShards(messages)
+	err = b.instance.shardCollection.CommitMessagesToShards(messages)
 	return
 }

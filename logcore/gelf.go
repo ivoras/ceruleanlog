@@ -1,4 +1,4 @@
-package main
+package logcore
 
 import (
 	"encoding/json"

@@ -1,4 +1,4 @@
-package main
+package logcore
 
 import (
 	"encoding/json"
@@ -53,28 +53,6 @@ func ReadCeruleanConfig(fileName string) (cfg CeruleanConfig, err error) {
 	return
 }
 
-func WriteCeruleanConfig(fileName string, cfg CeruleanConfig) (err error) {
-	data, err := json.Marshal(&cfg)
-	if err != nil {
-		return
-	}
-	err = ioutil.WriteFile(fileName, data, 0644)
-	return
-}
-
-func NewCeruleanConfig() (cfg CeruleanConfig) {
-	cfg.SQLiteJournalMode = "delete"
-	cfg.ShardTimeSpecString = "week"
-	cfg.ShardTimeSpec = ShardTimeSpecWeek
-	cfg.MemoryBufferTimeSeconds = 30
-	cfg.IndexFieldList = []string{}
-	return
-}
-
-func getConfigFileName() string {
-	return fmt.Sprintf("%s/%s", *dataDir, *configFile)
-}
-
 // GetShardName returns a name and a unique ID
 // (the name and the ID are locally unique and date-based)
 // for a shard which contains data for the given timestamp.
@@ -93,5 +71,23 @@ func (c CeruleanConfig) GetShardNameID(ts uint32) (name string, id uint32) {
 	default:
 		log.Panicln("Invalid ShardTimeSpec:", c.ShardTimeSpec)
 	}
+	return
+}
+
+func WriteCeruleanConfig(fileName string, cfg CeruleanConfig) (err error) {
+	data, err := json.Marshal(&cfg)
+	if err != nil {
+		return
+	}
+	err = ioutil.WriteFile(fileName, data, 0644)
+	return
+}
+
+func NewCeruleanConfig() (cfg CeruleanConfig) {
+	cfg.SQLiteJournalMode = "delete"
+	cfg.ShardTimeSpecString = "week"
+	cfg.ShardTimeSpec = ShardTimeSpecWeek
+	cfg.MemoryBufferTimeSeconds = 30
+	cfg.IndexFieldList = []string{}
 	return
 }

@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 
 	"github.com/gorilla/handlers"
+	"github.com/ivoras/ceruleanlog/logcore"
 	"github.com/rs/cors"
 )
 
@@ -93,12 +94,12 @@ func wwwGelf(w http.ResponseWriter, r *http.Request) {
 		wwwErrorWithCode(w, r, "Cannot read data", http.StatusBadRequest)
 		return
 	}
-	msg, err := ParseGelfMessage(data)
+	msg, err := logcore.ParseGelfMessage(data)
 	if err != nil {
 		wwwErrorWithCode(w, r, fmt.Sprintf("Error parsing GELF message: %v", err), http.StatusBadRequest)
 		return
 	}
-	err = msgBuffer.AddMessage(msg)
+	err = instance.AddMessage(msg)
 	if err != nil {
 		wwwError(w, r, fmt.Sprintf("Error ingesting message: %v", err))
 		return
