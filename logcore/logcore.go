@@ -32,6 +32,7 @@ func NewCeruleanInstance(dataDir string) *CeruleanInstance {
 		shardCollection: DbShardCollection{shards: map[uint32]*DbShard{}},
 	}
 	instance.msgBuffer.instance = &instance
+	instance.shardCollection.instance = &instance
 
 	st, err := os.Stat(dataDir)
 	if os.IsNotExist(err) {

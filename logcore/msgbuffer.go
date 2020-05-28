@@ -18,6 +18,7 @@ type MsgBuffer struct {
 }
 
 func (b *MsgBuffer) addMessage(msg BasicGelfMessage) (err error) {
+	//log.Println("CeruleanLog recording message:", jsonifyWhatever(msg))
 	b.WithLock(func() {
 		b.Messages = append(b.Messages, msg)
 		if b.instance.config.MemoryBufferTimeSeconds == 0 {
@@ -34,8 +35,9 @@ func (b *MsgBuffer) addMessage(msg BasicGelfMessage) (err error) {
 }
 
 func (b *MsgBuffer) committer() {
+	log.Println("Starting CeruleanLog committer for", b.instance.dataDir, "flush time", b.instance.config.MemoryBufferTimeSeconds)
 	for {
-		if time.Since(b.LastSwapTime) >= time.Duration(b.instance.config.MemoryBufferTimeSeconds)*time.Second {
+		if time.Since(b.LastSwapTime) >= time.Duration(b.instance.config.MemoryBufferTimeSeconds)*time.Second && len(b.Messages) != 0 {
 			var oldMessages []BasicGelfMessage
 			b.WithLock(func() {
 				oldMessages = b.Messages
@@ -45,9 +47,13 @@ func (b *MsgBuffer) committer() {
 			err := b.commitMessagesToShards(&oldMessages)
 			if err != nil {
 				log.Printf("Cannot commit messages to database shards! %d messages lost! %v", len(oldMessages), err)
+			} else {
+				log.Printf("CeruleanLog committed %d messages to database shards.", len(oldMessages))
 			}
 		}
+		time.Sleep(1 * time.Second)
 	}
+	log.Println("Exiting CeruleanLog committer for", b.instance.dataDir)
 }
 
 func (b *MsgBuffer) commitMessagesToShards(messages *[]BasicGelfMessage) (err error) {
