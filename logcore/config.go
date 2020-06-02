@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"time"
 )
 
 type ShardTimeSpecType uint32
@@ -22,6 +23,11 @@ type CeruleanConfig struct {
 	ShardTimeSpec           ShardTimeSpecType `json:"-"`
 	MemoryBufferTimeSeconds uint32            `json:"memory_buffer_time_seconds"`
 	IndexFieldList          []string          `json:"index_field_list"`
+}
+
+type spanNameID struct {
+	name string
+	id   uint32
 }
 
 func ReadCeruleanConfig(fileName string) (cfg CeruleanConfig, err error) {
@@ -53,6 +59,18 @@ func ReadCeruleanConfig(fileName string) (cfg CeruleanConfig, err error) {
 	return
 }
 
+func (c CeruleanConfig) ShardNameToTsID(name string) (ts, id uint32, err error) {
+	var t time.Time
+	switch c.ShardTimeSpec {
+	case ShardTimeSpecYear:
+		t, err = time.ParseInLocation("2006", name, time.UTC)
+	case ShardTimeSpecMonth:
+		t, err = time.ParseInLocation("2006-01", name, time.UTC)
+	case ShardTimeSpecWeek:
+
+	}
+}
+
 // GetShardName returns a name and a unique ID
 // (the name and the ID are locally unique and date-based)
 // for a shard which contains data for the given timestamp.
@@ -70,6 +88,32 @@ func (c CeruleanConfig) GetShardNameID(ts uint32) (name string, id uint32) {
 		return t.Format("2006-01-02"), ts / (3600 * 24)
 	default:
 		log.Panicln("Invalid ShardTimeSpec:", c.ShardTimeSpec)
+	}
+	return
+}
+
+func (c CeruleanConfig) GetShardNameIDsTimeSpan(timeFrom, timeTo uint32) (list []spanNameID) {
+	list = []spanNameID{}
+	skip := uint32(0)
+	switch c.ShardTimeSpec {
+	case ShardTimeSpecYear:
+		skip = 3600 * 24 * 365
+	case ShardTimeSpecMonth:
+		skip = 3600 * 24 * 28
+	case ShardTimeSpecWeek:
+		skip = 3600 * 24 * 6
+	case ShardTimeSpecDay:
+		skip = 3600 * 23
+	default:
+		log.Panicln("Invalid ShardTimeSpec:", c.ShardTimeSpec)
+	}
+	oldID := uint32(0)
+	for t := timeFrom; t < timeTo; t += skip {
+		name, id := c.GetShardNameID(t)
+		if id != oldID {
+			list = append(list, spanNameID{name: name, id: id})
+			oldID = id
+		}
 	}
 	return
 }

@@ -26,6 +26,13 @@ type DbShardCollection struct {
 	instance *CeruleanInstance
 }
 
+func NewDbShardCollection(i *CeruleanInstance) (sc DbShardCollection) {
+	return DbShardCollection{
+		shards:   map[uint32]*DbShard{},
+		instance: i,
+	}
+}
+
 func (sc *DbShardCollection) GetShard(ts uint32) (shard *DbShard, err error) {
 	shardName, shardID := sc.instance.config.GetShardNameID(ts)
 	var found bool
@@ -61,7 +68,7 @@ func (sc *DbShardCollection) GetShard(ts uint32) (shard *DbShard, err error) {
 			return
 		}
 		_, err = db.Exec(`
-		CREATE TABLE data(
+		CREATE TABLE data (
 			id 				INTEGER PRIMARY KEY,
 			timestamp 		INTEGER NOT NULL,
 			host 			TEXT,

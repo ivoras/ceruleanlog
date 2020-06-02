@@ -18,6 +18,13 @@ type MsgBuffer struct {
 	instance     *CeruleanInstance
 }
 
+func NewMsgBuffer(i *CeruleanInstance) (mb MsgBuffer) {
+	return MsgBuffer{
+		Messages: []BasicGelfMessage{},
+		instance: i,
+	}
+}
+
 func (b *MsgBuffer) addMessage(msg BasicGelfMessage) (err error) {
 	//log.Println("CeruleanLog recording message:", jsonifyWhatever(msg))
 	b.WithLock(func() {

@@ -2,6 +2,7 @@ package logcore
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 )
@@ -12,6 +13,7 @@ type CeruleanInstance struct {
 	config          CeruleanConfig
 	msgBuffer       MsgBuffer
 	shardCollection DbShardCollection
+	earliestTime    uint32
 }
 
 func (ci CeruleanInstance) getConfigFileName() string {
@@ -25,14 +27,12 @@ func (ci CeruleanInstance) getShardsDir() string {
 func NewCeruleanInstance(dataDir string) *CeruleanInstance {
 
 	instance := CeruleanInstance{
-		dataDir:         dataDir,
-		configFile:      "ceruleanlog.json",
-		config:          NewCeruleanConfig(),
-		msgBuffer:       MsgBuffer{Messages: []BasicGelfMessage{}},
-		shardCollection: DbShardCollection{shards: map[uint32]*DbShard{}},
+		dataDir:    dataDir,
+		configFile: "ceruleanlog.json",
+		config:     NewCeruleanConfig(),
 	}
-	instance.msgBuffer.instance = &instance
-	instance.shardCollection.instance = &instance
+	instance.msgBuffer = NewMsgBuffer(&instance)
+	instance.shardCollection = NewDbShardCollection(&instance)
 
 	st, err := os.Stat(dataDir)
 	if os.IsNotExist(err) {
@@ -63,10 +63,27 @@ func NewCeruleanInstance(dataDir string) *CeruleanInstance {
 	return &instance
 }
 
+func (ci *CeruleanInstance) getShardsInDir() (shards []spanNameID, err error) {
+	files, err := ioutil.ReadDir(ci.getShardsDir())
+	if err != nil {
+		return nil, err
+	}
+	shards = []spanNameID{}
+	for _, f := range files {
+		if !f.IsDir() {
+			continue
+		}
+	}
+}
+
 func (ci *CeruleanInstance) Committer() {
 	ci.msgBuffer.committer()
 }
 
 func (ci *CeruleanInstance) AddMessage(msg BasicGelfMessage) (err error) {
 	return ci.msgBuffer.addMessage(msg)
+}
+
+func (ci *CeruleanInstance) Query(timeFrom, timeTo uint32, query string) {
+
 }
