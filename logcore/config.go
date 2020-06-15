@@ -75,6 +75,7 @@ func (c CeruleanConfig) ShardNameToTsID(name string) (ts, id uint32, err error) 
 	case ShardTimeSpecWeek:
 		var y, w int
 		if _, err = fmt.Sscanf(name, "%4d-W%2d", &y, &w); err != nil {
+			err = fmt.Errorf("Cannot scan week spec %s: %w", name, err)
 			return
 		}
 		t = isoweek.StartTime(y, w, time.UTC)

@@ -330,7 +330,9 @@ func (sc *DbShardCollection) Query(timeFrom, timeTo, limit uint32, query string)
 		}
 		res, err := shard.sqlQuery(fmt.Sprintf("%s LIMIT %d", sqlQuery, int(limit)-len(result)))
 		if err != nil {
-			return nil, err
+			log.Println("Query error on shard", s.name, err)
+			continue
+			//return nil, err
 		}
 		result = append(result, res...)
 		if len(result) >= int(limit) {
@@ -346,6 +348,7 @@ func (shard *DbShard) sqlQuery(query string) (result DbShardQueryResult, err err
 	if err != nil {
 		return
 	}
+	defer rows.Close()
 	columns, err := rows.Columns()
 	if err != nil {
 		return
@@ -363,18 +366,22 @@ func (shard *DbShard) sqlQuery(query string) (result DbShardQueryResult, err err
 				row[i] = new(string)
 			case "INTEGER":
 				row[i] = new(int)
+			case "NUMERIC":
+				row[i] = new(float64)
 			default:
 				log.Println("Unknown type:", columnTypes[i].DatabaseTypeName())
+				return nil, fmt.Errorf("Unknown type: %s", columnTypes[i].DatabaseTypeName())
 			}
 		}
 		err = rows.Scan(row...)
 		if err != nil {
-			return
+			return nil, fmt.Errorf("Error scanning row: %w", err)
 		}
 		mrow := map[string]interface{}{}
 		for i := range row {
 			mrow[columns[i]] = row[i]
 		}
+		log.Println(mrow)
 		result = append(result, mrow)
 	}
 	return
