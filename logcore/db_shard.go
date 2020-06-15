@@ -381,7 +381,7 @@ func (shard *DbShard) sqlQuery(query string) (result DbShardQueryResult, err err
 		for i := range row {
 			mrow[columns[i]] = row[i]
 		}
-		log.Println(mrow)
+		//log.Println(mrow)
 		result = append(result, mrow)
 	}
 	return
