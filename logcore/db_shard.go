@@ -3,6 +3,7 @@ package logcore
 import (
 	"database/sql"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"strconv"
@@ -15,26 +16,38 @@ type DbShard struct {
 	db            *sql.DB
 	id            uint32
 	name          string
-	dataFields    []string // Must be kept sorted for binary search
-	indexedFields []string // Must be kept sorted for binary search
+	dataFields    SortedStringSlice // Must be kept sorted for binary search
+	indexedFields SortedStringSlice // Must be kept sorted for binary search
 }
+
+type DbShardQueryResult []map[string]interface{}
 
 type DbShardCollection struct {
 	WithRWMutex
 
-	shards   map[uint32]*DbShard
-	instance *CeruleanInstance
+	shards     map[uint32]*DbShard // shards loaded in memory, mapped by id
+	shardNames SortedStringSlice   // list of all available shards in the filesystem, by name; a function in config can translate to ids
+	instance   *CeruleanInstance
 }
 
-func NewDbShardCollection(i *CeruleanInstance) (sc DbShardCollection) {
-	return DbShardCollection{
+func NewDbShardCollection(i *CeruleanInstance) (sc DbShardCollection, err error) {
+	sc = DbShardCollection{
 		shards:   map[uint32]*DbShard{},
 		instance: i,
 	}
+	sc.shardNames, err = sc.getShardNames()
+	if err == nil {
+		sc.shardNames.Sort()
+	}
+	return
 }
 
 func (sc *DbShardCollection) GetShard(ts uint32) (shard *DbShard, err error) {
 	shardName, shardID := sc.instance.config.GetShardNameID(ts)
+	return sc.getShardByNameID(shardName, shardID)
+}
+
+func (sc *DbShardCollection) getShardByNameID(shardName string, shardID uint32) (shard *DbShard, err error) {
 	var found bool
 	sc.WithRLock(func() {
 		shard, found = sc.shards[shardID]
@@ -71,19 +84,23 @@ func (sc *DbShardCollection) GetShard(ts uint32) (shard *DbShard, err error) {
 		CREATE TABLE data (
 			id 				INTEGER PRIMARY KEY,
 			timestamp 		INTEGER NOT NULL,
+			facility        TEXT,
 			host 			TEXT,
 			full_message 	TEXT,
 			short_message	TEXT
 		);
 		CREATE INDEX idx_data_timestamp ON data(timestamp);
 		CREATE INDEX idx_data_host ON data(host);
+		CREATE INDEX idx_data_facility ON data(facility);
 		`)
 		if err != nil {
 			return
 		}
-		shard.dataFields = []string{"full_message", "host", "short_message", "timestamp"}
-		shard.indexedFields = []string{"host", "timestamp"}
+		shard.dataFields = []string{"facility", "full_message", "host", "short_message", "timestamp"}
+		shard.indexedFields = []string{"facility", "host", "timestamp"}
 		log.Println("Created new shard database", shardDbFileName)
+		sc.shardNames = append(sc.shardNames, shardName)
+		sc.shardNames.Sort()
 	} else {
 		// Load dataFields and indexedFields from database
 		shard.dataFields = []string{}
@@ -145,7 +162,7 @@ func (sc *DbShardCollection) GetShard(ts uint32) (shard *DbShard, err error) {
 				if err != nil {
 					return
 				}
-				shard.indexedFields = InsertSortedString(col.name, shard.indexedFields)
+				shard.indexedFields.Insert(col.name)
 			}
 		}
 	}
@@ -156,6 +173,33 @@ func (sc *DbShardCollection) GetShard(ts uint32) (shard *DbShard, err error) {
 		sc.shards[shardID] = shard
 	})
 	return
+}
+
+func (sc DbShardCollection) getShardNames() (names []string, err error) {
+	shardsDir := sc.instance.getShardsDir()
+	dirs, err := ioutil.ReadDir(shardsDir)
+	if err != nil {
+		return nil, err
+	}
+	for _, dir := range dirs {
+		if !dir.IsDir() {
+			continue
+		}
+		names = append(names, dir.Name())
+	}
+	return
+}
+
+func (sc DbShardCollection) EarlieastShard() (name string, ts, id uint32, err error) {
+	if len(sc.shardNames) == 0 {
+		return "", 0, 0, fmt.Errorf("No shards")
+	}
+	name = sc.shardNames[0]
+	ts, id, err = sc.instance.config.ShardNameToTsID(name)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	return name, ts, id, nil
 }
 
 func (sc *DbShardCollection) CommitMessagesToShards(messages *[]BasicGelfMessage) (err error) {
@@ -219,6 +263,7 @@ func (sc *DbShardCollection) CommitMessageToShard(tx *sql.Tx, msg *BasicGelfMess
 	for fn, fnType := range newFields {
 		fields = InsertSortedString(fn, fields)
 		_, err = tx.Exec(fmt.Sprintf("ALTER TABLE data ADD COLUMN %s %s", fn, fnType))
+		log.Println("Adding column %s %s to %s", fn, fnType, shard.name)
 		if err != nil {
 			return
 		}
@@ -236,7 +281,7 @@ func (sc *DbShardCollection) CommitMessageToShard(tx *sql.Tx, msg *BasicGelfMess
 		case "timestamp":
 			values[i] = strconv.Itoa(int(msg.Timestamp))
 		case "facility":
-			values[i] = msg.Facility
+			values[i] = quoteSQLString(msg.Facility)
 		default:
 			if v, found := msg.AdditionalNumbers[fn]; found {
 				values[i] = strconv.FormatFloat(v, 'f', -1, 64)
@@ -262,4 +307,68 @@ func (sc *DbShardCollection) CommitMessageToShard(tx *sql.Tx, msg *BasicGelfMess
 
 func quoteSQLString(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
+func (sc *DbShardCollection) Query(timeFrom, timeTo uint32, query string) (result DbShardQueryResult, err error) {
+	_, firstTs, _, err := sc.EarlieastShard()
+	if err != nil {
+		return
+	}
+	if timeFrom < firstTs {
+		timeFrom = firstTs
+	}
+	sqlQuery := fmt.Sprintf("SELECT * FROM data WHERE timestamp BETWEEN %d and %d AND %s", timeFrom, timeTo, query)
+	result = DbShardQueryResult{}
+	shardList := sc.instance.config.GetShardNameIDsTimeSpan(timeFrom, timeTo)
+	for _, s := range shardList {
+		shard, err := sc.getShardByNameID(s.name, s.id)
+		if err != nil {
+			return nil, err
+		}
+		res, err := shard.sqlQuery(sqlQuery)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, res...)
+	}
+	return
+}
+
+func (shard *DbShard) sqlQuery(query string) (result DbShardQueryResult, err error) {
+	rows, err := shard.db.Query(query)
+	if err != nil {
+		return
+	}
+	columns, err := rows.Columns()
+	if err != nil {
+		return
+	}
+	columnTypes, err := rows.ColumnTypes()
+	if err != nil {
+		return
+	}
+	result = DbShardQueryResult{}
+	for rows.Next() {
+		row := make([]interface{}, len(columns))
+		for i := range row {
+			switch columnTypes[i].DatabaseTypeName() {
+			case "TEXT":
+				row[i] = new(string)
+			case "INTEGER":
+				row[i] = new(int)
+			default:
+				log.Println("Unknown type:", columnTypes[i].DatabaseTypeName())
+			}
+		}
+		err = rows.Scan(row...)
+		if err != nil {
+			return
+		}
+		mrow := map[string]interface{}{}
+		for i := range row {
+			mrow[columns[i]] = row[i]
+		}
+		result = append(result, mrow)
+	}
+	return
 }

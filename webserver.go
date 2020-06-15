@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"runtime/debug"
+	"time"
 
 	"github.com/gorilla/handlers"
 	"github.com/ivoras/ceruleanlog/logcore"
@@ -113,4 +114,33 @@ func wwwQuery(w http.ResponseWriter, r *http.Request) {
 		wwwError(w, r, "HTTP GET method expected")
 		return
 	}
+	if len(r.URL.Query()["time_from"]) == 0 {
+		wwwErrorWithCode(w, r, "Missing time_from", http.StatusBadRequest)
+		return
+	}
+	if len(r.URL.Query()["time_to"]) == 0 {
+		wwwErrorWithCode(w, r, "Missing time_to", http.StatusBadRequest)
+		return
+	}
+
+	strTimeFrom := r.URL.Query()["time_from"][0]
+	timeFrom, err := time.ParseInLocation("2006-01-02T15:04", strTimeFrom, time.UTC)
+	if err != nil {
+		wwwErrorWithCode(w, r, fmt.Sprintf("Invalid time_from: %v", err), http.StatusBadRequest)
+		return
+	}
+	strTimeTo := r.URL.Query()["time_to"][0]
+	timeTo, err := time.ParseInLocation("2006-01-02T15:04", strTimeTo, time.UTC)
+	if err != nil {
+		wwwErrorWithCode(w, r, fmt.Sprintf("Invalid time_to: %v", err), http.StatusBadRequest)
+		return
+	}
+	query := r.URL.Query()["query"][0]
+	if query == "" {
+		wwwErrorWithCode(w, r, "Invalid query", http.StatusBadRequest)
+		return
+	}
+
+	result, err := instance.Query(uint32(timeFrom.Unix()), uint32(timeTo.Unix()), query)
+	wwwJSON(w, r, WwwRespQuery{Ok: true, Result: result})
 }

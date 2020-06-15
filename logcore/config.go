@@ -6,6 +6,8 @@ import (
 	"io/ioutil"
 	"log"
 	"time"
+
+	"github.com/snabb/isoweek"
 )
 
 type ShardTimeSpecType uint32
@@ -64,11 +66,28 @@ func (c CeruleanConfig) ShardNameToTsID(name string) (ts, id uint32, err error) 
 	switch c.ShardTimeSpec {
 	case ShardTimeSpecYear:
 		t, err = time.ParseInLocation("2006", name, time.UTC)
+		ts = uint32(t.Unix())
+		id = uint32(t.Year())
 	case ShardTimeSpecMonth:
 		t, err = time.ParseInLocation("2006-01", name, time.UTC)
+		ts = uint32(t.Unix())
+		id = uint32(uint32(t.Year())*100 + uint32(t.Month()))
 	case ShardTimeSpecWeek:
-
+		var y, w int
+		if _, err = fmt.Sscanf(name, "%4d-W%2d", &y, &w); err != nil {
+			return
+		}
+		t = isoweek.StartTime(y, w, time.UTC)
+		ts = uint32(t.Unix())
+		id = uint32(y)*100 + uint32(w)
+	case ShardTimeSpecDay:
+		t, err = time.ParseInLocation("2006-01-02", name, time.UTC)
+		ts = uint32(t.Unix())
+		id = ts / (3600 * 24)
+	default:
+		log.Panicln("Invalid ShardTimeSpec:", c.ShardTimeSpec)
 	}
+	return
 }
 
 // GetShardName returns a name and a unique ID
@@ -83,7 +102,7 @@ func (c CeruleanConfig) GetShardNameID(ts uint32) (name string, id uint32) {
 		return t.Format("2006-01"), uint32(t.Year())*100 + uint32(t.Month())
 	case ShardTimeSpecWeek:
 		y, w := t.ISOWeek()
-		return fmt.Sprintf("%04d-%02d", y, w), uint32(y)*100 + uint32(w)
+		return fmt.Sprintf("%04d-W%02d", y, w), uint32(y)*100 + uint32(w)
 	case ShardTimeSpecDay:
 		return t.Format("2006-01-02"), ts / (3600 * 24)
 	default:

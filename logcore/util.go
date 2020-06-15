@@ -49,6 +49,22 @@ func (m *WithRWMutex) WithWLock(f func()) {
 	m.RWMutex.Unlock()
 }
 
+type SortedStringSlice sort.StringSlice
+
+func (ss *SortedStringSlice) Insert(s string) {
+	idx := sort.Search(len(*ss), func(i int) bool {
+		return (*ss)[i] >= s
+	})
+	*ss = append(*ss, "")
+	copy((*ss)[idx+1:], (*ss)[idx:])
+	(*ss)[idx] = s
+	return
+}
+
+func (ss *SortedStringSlice) Sort() {
+	(*sort.StringSlice)(ss).Sort()
+}
+
 // Converts the given Unix timestamp to time.Time
 func unixTimeStampToUTCTime(ts uint32) time.Time {
 	return time.Unix(int64(ts), 0)

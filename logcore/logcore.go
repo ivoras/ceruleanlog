@@ -25,14 +25,13 @@ func (ci CeruleanInstance) getShardsDir() string {
 }
 
 func NewCeruleanInstance(dataDir string) *CeruleanInstance {
-
+	var err error
 	instance := CeruleanInstance{
 		dataDir:    dataDir,
 		configFile: "ceruleanlog.json",
 		config:     NewCeruleanConfig(),
 	}
 	instance.msgBuffer = NewMsgBuffer(&instance)
-	instance.shardCollection = NewDbShardCollection(&instance)
 
 	st, err := os.Stat(dataDir)
 	if os.IsNotExist(err) {
@@ -52,6 +51,10 @@ func NewCeruleanInstance(dataDir string) *CeruleanInstance {
 		log.Println("Initialised data directory", dataDir)
 	} else if !st.IsDir() {
 		log.Panicln("Not a directory:", dataDir)
+	}
+	instance.shardCollection, err = NewDbShardCollection(&instance)
+	if err != nil {
+		log.Panicln(err)
 	}
 
 	if readConfig, err := ReadCeruleanConfig(instance.getConfigFileName()); err == nil {
@@ -74,6 +77,7 @@ func (ci *CeruleanInstance) getShardsInDir() (shards []spanNameID, err error) {
 			continue
 		}
 	}
+	return
 }
 
 func (ci *CeruleanInstance) Committer() {
@@ -84,6 +88,7 @@ func (ci *CeruleanInstance) AddMessage(msg BasicGelfMessage) (err error) {
 	return ci.msgBuffer.addMessage(msg)
 }
 
-func (ci *CeruleanInstance) Query(timeFrom, timeTo uint32, query string) {
-
+func (ci *CeruleanInstance) Query(timeFrom, timeTo uint32, query string) (result DbShardQueryResult, err error) {
+	result, err = ci.shardCollection.Query(timeFrom, timeTo, query)
+	return
 }
