@@ -309,7 +309,7 @@ func quoteSQLString(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
 
-func (sc *DbShardCollection) Query(timeFrom, timeTo uint32, query string) (result DbShardQueryResult, err error) {
+func (sc *DbShardCollection) Query(timeFrom, timeTo, limit uint32, query string) (result DbShardQueryResult, err error) {
 	_, firstTs, _, err := sc.EarlieastShard()
 	if err != nil {
 		return
@@ -317,7 +317,10 @@ func (sc *DbShardCollection) Query(timeFrom, timeTo uint32, query string) (resul
 	if timeFrom < firstTs {
 		timeFrom = firstTs
 	}
-	sqlQuery := fmt.Sprintf("SELECT * FROM data WHERE timestamp BETWEEN %d and %d AND %s", timeFrom, timeTo, query)
+	if len(query) == 0 {
+		query = "1"
+	}
+	sqlQuery := fmt.Sprintf("SELECT * FROM data WHERE timestamp BETWEEN %d and %d AND %s ORDER BY timestamp", timeFrom, timeTo, query)
 	result = DbShardQueryResult{}
 	shardList := sc.instance.config.GetShardNameIDsTimeSpan(timeFrom, timeTo)
 	for _, s := range shardList {
@@ -325,16 +328,20 @@ func (sc *DbShardCollection) Query(timeFrom, timeTo uint32, query string) (resul
 		if err != nil {
 			return nil, err
 		}
-		res, err := shard.sqlQuery(sqlQuery)
+		res, err := shard.sqlQuery(fmt.Sprintf("%s LIMIT %d", sqlQuery, int(limit)-len(result)))
 		if err != nil {
 			return nil, err
 		}
 		result = append(result, res...)
+		if len(result) >= int(limit) {
+			break
+		}
 	}
 	return
 }
 
 func (shard *DbShard) sqlQuery(query string) (result DbShardQueryResult, err error) {
+	log.Println(shard.name, "SQL:", query)
 	rows, err := shard.db.Query(query)
 	if err != nil {
 		return
@@ -351,7 +358,7 @@ func (shard *DbShard) sqlQuery(query string) (result DbShardQueryResult, err err
 	for rows.Next() {
 		row := make([]interface{}, len(columns))
 		for i := range row {
-			switch columnTypes[i].DatabaseTypeName() {
+			switch strings.ToUpper(columnTypes[i].DatabaseTypeName()) {
 			case "TEXT":
 				row[i] = new(string)
 			case "INTEGER":

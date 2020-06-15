@@ -88,7 +88,7 @@ func (ci *CeruleanInstance) AddMessage(msg BasicGelfMessage) (err error) {
 	return ci.msgBuffer.addMessage(msg)
 }
 
-func (ci *CeruleanInstance) Query(timeFrom, timeTo uint32, query string) (result DbShardQueryResult, err error) {
-	result, err = ci.shardCollection.Query(timeFrom, timeTo, query)
+func (ci *CeruleanInstance) Query(timeFrom, timeTo, limit uint32, query string) (result DbShardQueryResult, err error) {
+	result, err = ci.shardCollection.Query(timeFrom, timeTo, limit, query)
 	return
 }
