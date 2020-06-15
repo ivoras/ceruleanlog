@@ -15,9 +15,9 @@ Why? I find Graylog to be cool but extremely slow for the limited functionalitie
 * ✓ Stores data in SQLite3 databases auto-sharded by time
 * ✓ Has configurable SQLite3 journal_mode
 * ✓ Has configurable shard time
-* ✓ Has configurable memory buffer time (or 0 for sync mode) 
+* ✓ Has configurable memory buffer time (or 0 for sync mode)
+* ✓ Implements a query API
+* ✓ Supports simple queries via SQL syntax
 * Has configurable indexing
-* Implements a query API
-* Supports simple queries via SQL syntax
 * Has a simple web GUI to fetch and display tabular data
 
