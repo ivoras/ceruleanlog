@@ -263,7 +263,7 @@ func (sc *DbShardCollection) CommitMessageToShard(tx *sql.Tx, msg *BasicGelfMess
 	for fn, fnType := range newFields {
 		fields = InsertSortedString(fn, fields)
 		_, err = tx.Exec(fmt.Sprintf("ALTER TABLE data ADD COLUMN %s %s", fn, fnType))
-		log.Println("Adding column %s %s to %s", fn, fnType, shard.name)
+		log.Printf("Adding column %s %s to %s", fn, fnType, shard.name)
 		if err != nil {
 			return
 		}
