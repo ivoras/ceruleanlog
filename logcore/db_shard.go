@@ -325,10 +325,11 @@ func (sc *DbShardCollection) Query(timeFrom, timeTo, limit uint32, query string)
 	if len(query) == 0 {
 		query = "1"
 	}
-	sqlQuery := fmt.Sprintf("SELECT * FROM data WHERE timestamp BETWEEN %d and %d AND %s ORDER BY timestamp", timeFrom, timeTo, query)
+	sqlQuery := fmt.Sprintf("SELECT * FROM data WHERE timestamp BETWEEN %d and %d AND %s ORDER BY timestamp DESC", timeFrom, timeTo, query)
 	result = DbShardQueryResult{}
 	shardList := sc.instance.config.GetShardNameIDsTimeSpan(timeFrom, timeTo)
-	for _, s := range shardList {
+	for i := len(shardList) - 1; i >= 0; i-- {
+		s := shardList[i]
 		shard, err := sc.getShardByNameID(s.name, s.id)
 		if err != nil {
 			return nil, err
