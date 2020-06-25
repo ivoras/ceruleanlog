@@ -262,10 +262,15 @@ func (sc *DbShardCollection) CommitMessageToShard(tx *sql.Tx, msg *BasicGelfMess
 	}
 	for fn, fnType := range newFields {
 		fields = InsertSortedString(fn, fields)
-		_, err = tx.Exec(fmt.Sprintf("ALTER TABLE data ADD COLUMN %s %s", fn, fnType))
 		log.Printf("Adding column %s %s to %s", fn, fnType, shard.name)
+		_, err = tx.Exec(fmt.Sprintf("ALTER TABLE data ADD COLUMN %s %s", fn, fnType))
 		if err != nil {
 			return
+		}
+		if fnType == "TEXT" {
+			_, err = tx.Exec(fmt.Sprintf("UPDATE data SET %s=''", fn))
+		} else if fnType == "NUMERIC" {
+			_, err = tx.Exec(fmt.Sprintf("UPDATE data SET %s=0", fn))
 		}
 	}
 	shard.dataFields = fields
