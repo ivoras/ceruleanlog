@@ -128,8 +128,9 @@ func (c CeruleanConfig) GetShardNameIDsTimeSpan(timeFrom, timeTo uint32) (list [
 		log.Panicln("Invalid ShardTimeSpec:", c.ShardTimeSpec)
 	}
 	oldID := uint32(0)
-	for t := timeFrom; t < timeTo; t += skip {
+	for t := timeFrom; t < timeTo+skip; t += skip {
 		name, id := c.GetShardNameID(t)
+		log.Println("Got shard name", name, "for", t)
 		if id != oldID {
 			list = append(list, spanNameID{name: name, id: id})
 			oldID = id
